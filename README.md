@@ -10,6 +10,7 @@ Although also mentioned in the README files of the subfolders, you
 should probably just start open at least 4 console windows and set
 these environment variables for the rest of the examples.
 
+### Google PubSub 
 These make [Google PubSub emulator](https://cloud.google.com/pubsub/docs/emulator)
 work locally.
 
@@ -18,6 +19,7 @@ $ export PUBSUB_EMULATOR_HOST=localhost:8086
 $ export PUBSUB_PROJECT_ID=demo
 ```
 
+### NATS PubSub 
 This one is for [NATS Streaming Server](https://github.com/nats-io/nats-streaming-server).
 
 ```
@@ -28,46 +30,6 @@ Also, make sure you have a recent version of Docker and Docker Compose
 installed. We start the infrastructure through Docker Compose, so you
 don't have to install anything besides Go on your machine.
 
-
-## What is a PubSub system?
-
-A PubSub system is a messaging system that has, as its name implies, two
-components: Publisher of messages and subscriber to messages. In contrast
-to synchronous communication, the publisher doesn't have to wait for a
-message to be received, as well as the receiver doesn't have to be online
-to retrieve messages sent earlier. As such, a PubSub system acts like a
-buffer for asynchronous messaging.
-
-Although there are various types of PubSub systems (Google PubSub, Kafka,
-RabbitMQ, NATS Streaming Server to name just a few), they slightly differ in
-how they work internally—and in terminology. So it is hard to find a
-good abstraction for them, although libraries like
-[`gocloud.dev/pubsub`](https://gocloud.dev/howto/pubsub/)
-try to do just that. The `gocloud.dev/pubsub` is especially interesting as it
-allows implementers to switch between different PubSub systems simply by using
-a different URL. That is very welcome as you can e.g. use NATS in development
-and Google PubSub in production, or a memory-based mock PubSub system 
-while testing.
-
-What all PubSub systems I've seen have in common is a way to publish messages
-via a topic (although the naming can be different). That topic is simply a
-name like `importer`, and a publisher send messages to that topic by some
-client. The messages are received by the PubSub system and typically persisted
-on the disk (some have in-memory storage as well). On the consumer side,
-subscribers receive messages by creating a subscription on that topic, which
-is also simply a name. Now that's where most of the abstractions start to fail.
-
-Notice that some companies use PubSub systems like a storage solution. E.g.
-the [New York Times uses Kafka for their publishing pipeline](https://www.confluent.io/blog/publishing-apache-kafka-new-york-times/).
-They use Kafka as an append-only log where messages are never deleted.
-You can iterate over the messages just like you can read through the rows
-of a SQL database.
-
-The most enlightening read about PubSub systems (or better: logs) is probably
-"What every software engineer should know about real-time data's unifying abstraction"
-by Jay Krebs from 2013, in which he lays out the fundamentals of Kafka:
-https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying
-Highly recommended.
 
 
 ## Differences in PubSub systems
@@ -93,60 +55,6 @@ and will remove them later. So setting the TTL to "never" will basically store
 all messages forever, allowing you to iterate over historic messages years later.
 
 
-## Publisher side
-
-Why is PubSub used instead of synchronous messaging in e.g. a request/response style?
-
-First of all PubSub is asynchronous by default. Suppose you want to track who
-is visiting your web site on a per-page basis. Then, in your HTTP handler, you
-simply gather the visitor details and send it to the PubSub system, in a kind
-of fire-and-forget manner. You don't care if an event is lost, and you want your
-HTTP handler to finish as quickly as possible. With request/response style, you
-had to wait until the event system acknowledged your message.
-
-Also, PubSub systems can send to more than one receiver with a single message.
-We'll see later in "Subscriptions" how this can be used for different
-architectural designs on the consumer side.
-
-
-## Subscriber side
-
-In PubSub systems, the publisher is more often the easier part of the equation.
-What about the subscriber side?
-
-When talking about PubSub systems with people new to the technology, there is
-a hidden assumption that there is a 1:1 relationship between publisher and
-subscriber. But that's not the case.
-
-Let's get back to that example with the events sent by out HTTP handler.
-Suppose it sends details about the endpoint, the visitor, and the time it took
-to process the request. Wouldn't it be nice to have a loosely-coupled system
-where one component tracks latency and throughput while a completely different
-component tracks the pages that visitors are mostly interested in? With PubSub,
-you can do that rather simply. E.g. with Google PubSub, if you subscribe with
-to a topic with a random subscription name, you will get a copy of each and every
-message sent to that topic. Repeat that: Every subscriber will get a copy.
-This is called fan-out.
-
-While the above is helpful for some work patterns, sometimes you don't want every
-subscriber to get a copy of each message. Instead, you want to load-balance the
-messages over a set of workers. Suppose you want to import products into a
-data store, and want to be able to scale with the number of products being
-imported concurrently. What you do with Google PubSub, for example, is to write
-a publisher to sends products into an `importer` topic. On the listening side,
-you create a set of subscribers that all have the same name, e.g. `importer_workers`.
-What Google PubSub does when pushing/pulling a message to/from a subscriber,
-it will only send one copy of the product to any of those `importer_workers`.
-So if you want to scale with the load of products being imported, you simply start
-more workers (a.k.a. subscribers). That is very easy to achieve, even automatically,
-with e.g. a Kubernetes cluster.
-
-Notice that most PubSub systems need the subscriber to acknowledge a message
-that it successfully processed. If they forget to acknowledge, the message is
-typically re-sent several times before giving up. Giving up, for e.g. RabbitMQ,
-means to send those messages into a so-called dead letter queue.
-
-
 ## Examples
 
 Now, this repository comes with 3 examples, each on in a subdirectory.
@@ -166,6 +74,7 @@ perfect for testing. You control the system to use by passing a URL.
 
 Now, open 4 terminals and start the infrastructure in the 1st one:
 
+### Start All Examples -- Run the GCP one locally
 ```
 $ docker-compose up
 ```
